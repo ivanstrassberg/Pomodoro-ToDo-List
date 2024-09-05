@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -73,10 +74,8 @@ func (s *APIServer) handleGetTasks(w http.ResponseWriter, r *http.Request) error
 }
 
 func (s *APIServer) handleGetTaskByID(w http.ResponseWriter, r *http.Request) error {
-	idStr := r.PathValue("id")
-	idInt, err := strconv.Atoi(idStr)
+	idInt, err := getIDFromURL(r)
 	if err != nil {
-		WriteJSON(w, http.StatusBadRequest, "Invalid ID format")
 		return err
 	}
 	taskByID, err := s.store.GetTaskByID(idInt)
@@ -92,17 +91,40 @@ func (s *APIServer) handleGetTaskByID(w http.ResponseWriter, r *http.Request) er
 	return nil
 }
 func (s *APIServer) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) error {
-	WriteJSON(w, http.StatusOK, "all good3")
+
+	idInt, err := getIDFromURL(r)
+	createTaskRequest := new(TaskCreateReq)
+	if err := json.NewDecoder(r.Body).Decode(createTaskRequest); err != nil {
+		return WriteJSON(w, http.StatusBadRequest, "")
+	}
+	if err != nil {
+		return err
+	}
+	updatedTask, err := s.store.UpdateTask(idInt, *createTaskRequest)
+	if err != nil {
+		return err
+	}
+	//something wrong with writejson, just sends empty structs EVERYWHERE!
+	//400 404 500 handle
+	WriteJSON(w, http.StatusOK, updatedTask)
 	return nil
 }
 func (s *APIServer) handleDeleteTaskByID(w http.ResponseWriter, r *http.Request) error {
-	WriteJSON(w, http.StatusOK, "all good4")
+	idInt, err := getIDFromURL(r)
+	if err != nil {
+		return err
+	}
+	if err := s.store.DeleteTask(idInt); err != nil {
+		return err
+	}
+
+	WriteJSON(w, http.StatusNoContent, "Task deleted")
+	// refer to codes
 	return nil
 }
 
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Add("Content-Type", "application/json")
-	// w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(v)
 }
 
@@ -113,7 +135,6 @@ type APIfunc func(http.ResponseWriter, *http.Request) error
 
 func makeHTTPHandleFunc(f APIfunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// enableCors(&w, r)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -127,4 +148,13 @@ func makeHTTPHandleFunc(f APIfunc) http.HandlerFunc {
 func isValidRFC3339(dateStr string) bool {
 	_, err := time.Parse(time.RFC3339, dateStr)
 	return err == nil
+}
+
+func getIDFromURL(r *http.Request) (int, error) {
+	idStr := r.PathValue("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return -1, fmt.Errorf("invalid ID format")
+	}
+	return idInt, nil
 }

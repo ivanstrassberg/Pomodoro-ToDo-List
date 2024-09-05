@@ -13,6 +13,8 @@ type Storage interface {
 	CreateTask(*Task) (Task, error)
 	GetTasks() ([]TaskID, error)
 	GetTaskByID(int) (TaskID, error)
+	UpdateTask(int, TaskCreateReq) (*TaskID, error)
+	DeleteTask(int) error
 }
 type PostgresStore struct {
 	db *sql.DB
@@ -78,7 +80,7 @@ func (s *PostgresStore) GetTasks() ([]TaskID, error) {
 		if err != nil {
 			return nil, err
 		}
-		taskSlice = append(taskSlice, task)
+		taskSlice = append(taskSlice, *task)
 	}
 	defer rows.Close()
 	return taskSlice, nil
@@ -102,20 +104,51 @@ func (s *PostgresStore) GetTaskByID(id int) (TaskID, error) {
 		if err != nil {
 			return TaskID{}, err
 		}
-		taskRet = task
+		taskRet = *task
 	}
 	defer rows.Close()
 
 	return taskRet, nil
 }
 
-func scanIntoTask(rows *sql.Rows) (TaskID, error) {
+func (s *PostgresStore) UpdateTask(id int, task TaskCreateReq) (*TaskID, error) {
+	query := `update task
+	set title = $1, description = $2, due_date = $3, updated_at = NOW()
+	where id = $4`
+	rows, err := s.db.Query(query, task.Title, task.Description, task.DueDate, id)
+	if err != nil {
+		return nil, err
+	}
+	var taskRet TaskID
+	for rows.Next() {
+		task, err := scanIntoTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		taskRet = *task
+	}
+	return &taskRet, nil
+}
+
+func (s *PostgresStore) DeleteTask(id int) error {
+	query := `delete from task where id = $1`
+	_, err := s.db.Exec(query, id)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func scanIntoTask(rows *sql.Rows) (*TaskID, error) {
 	var task TaskID
 	err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.CreatedAt, &task.UpdatedAt)
 	if err != nil {
-		return TaskID{}, err
+		if err == sql.ErrNoRows {
+			return nil, err
+		}
+		return nil, err
 	}
-	return task, nil
+	return &task, nil
 }
 
 func ScanIntoRow(r *sql.Rows, dest interface{}) error {
