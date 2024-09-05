@@ -10,8 +10,8 @@ import (
 )
 
 type Storage interface {
-	//		AddTask(string) error
 	CreateTask(*Task) (Task, error)
+	GetTasks() ([]TaskID, error)
 }
 type PostgresStore struct {
 	db *sql.DB
@@ -63,9 +63,32 @@ func (s *PostgresStore) CreateTask(t *Task) (Task, error) {
 	return *task, nil
 }
 
-func AddTask(token string) error {
-	fmt.Println("something≈")
-	return nil
+func (s *PostgresStore) GetTasks() ([]TaskID, error) {
+
+	var taskSlice []TaskID
+	query := `select * from task`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		task, err := scanIntoTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		taskSlice = append(taskSlice, task)
+	}
+
+	return taskSlice, nil
+}
+
+func scanIntoTask(rows *sql.Rows) (TaskID, error) {
+	var task TaskID
+	err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate, &task.CreatedAt, &task.UpdatedAt)
+	if err != nil {
+		return TaskID{}, err
+	}
+	return task, nil
 }
 
 func ScanIntoRow(r *sql.Rows, dest interface{}) error {

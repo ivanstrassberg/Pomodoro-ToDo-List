@@ -18,6 +18,10 @@ type Task struct {
 	CreatedAt   time.Time `json:created_at`
 	UpdatedAt   time.Time `json:updated_at`
 }
+type TaskID struct {
+	ID int `json:id`
+	Task
+}
 
 func (t *Task) ApplyCurrentTimeToTask(params ...string) string {
 	currentTime := time.Now().Format(time.RFC3339)

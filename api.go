@@ -61,7 +61,12 @@ func (s *APIServer) handlePostTasks(w http.ResponseWriter, r *http.Request) erro
 	return nil
 }
 func (s *APIServer) handleGetTasks(w http.ResponseWriter, r *http.Request) error {
-	WriteJSON(w, http.StatusOK, "all good2")
+	tasksSlice, err := s.store.GetTasks()
+	if err != nil {
+		WriteJSON(w, http.StatusInternalServerError, "")
+		return err
+	}
+	WriteJSON(w, http.StatusOK, tasksSlice)
 	return nil
 }
 
