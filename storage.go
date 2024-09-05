@@ -12,6 +12,7 @@ import (
 type Storage interface {
 	CreateTask(*Task) (Task, error)
 	GetTasks() ([]TaskID, error)
+	GetTaskByID(int) (TaskID, error)
 }
 type PostgresStore struct {
 	db *sql.DB
@@ -60,6 +61,7 @@ func (s *PostgresStore) CreateTask(t *Task) (Task, error) {
 	if err := ScanIntoStruct(rows, &task); err != nil {
 		return Task{}, err
 	}
+
 	return *task, nil
 }
 
@@ -78,8 +80,33 @@ func (s *PostgresStore) GetTasks() ([]TaskID, error) {
 		}
 		taskSlice = append(taskSlice, task)
 	}
-
+	defer rows.Close()
 	return taskSlice, nil
+}
+
+// todo handle the cases of failure
+func (s *PostgresStore) GetTaskByID(id int) (TaskID, error) {
+
+	var taskRet TaskID
+	query := fmt.Sprintf("select * from task where id = %v", id)
+	rows, err := s.db.Query(query)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return TaskID{}, err
+		}
+		return TaskID{}, err
+	}
+	for rows.Next() {
+		task, err := scanIntoTask(rows)
+		if err != nil {
+			return TaskID{}, err
+		}
+		taskRet = task
+	}
+	defer rows.Close()
+
+	return taskRet, nil
 }
 
 func scanIntoTask(rows *sql.Rows) (TaskID, error) {

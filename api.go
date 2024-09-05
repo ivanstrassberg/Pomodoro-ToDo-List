@@ -1,9 +1,11 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -71,7 +73,22 @@ func (s *APIServer) handleGetTasks(w http.ResponseWriter, r *http.Request) error
 }
 
 func (s *APIServer) handleGetTaskByID(w http.ResponseWriter, r *http.Request) error {
-	WriteJSON(w, http.StatusOK, "all good2 by id")
+	idStr := r.PathValue("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		WriteJSON(w, http.StatusBadRequest, "Invalid ID format")
+		return err
+	}
+	taskByID, err := s.store.GetTaskByID(idInt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			WriteJSON(w, http.StatusNotFound, "Task not found")
+			return err
+		}
+		WriteJSON(w, http.StatusInternalServerError, "Server error")
+		return err
+	}
+	WriteJSON(w, http.StatusOK, taskByID)
 	return nil
 }
 func (s *APIServer) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) error {
