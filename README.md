@@ -1,5 +1,6 @@
 Инструкция по запуску.
 1 Создать папку, в нее скачать проект с помощью  \
+"git init" \
 "git pull https://github.com/ivanstrassberg/todo_list-Go-API.git" \
 2 Выполнить команду "go mod tidy" \
 3 В строке 43 storage.go изменить параметры на ту БД, на которую удобно, либо создать новую с приведенным именем и параметрами: connStr := "user=postgres port=5433 dbname=todo_list password=root sslmode=disable" \
