@@ -6,20 +6,20 @@ import (
 )
 
 type TaskCreateReq struct {
-	Title       string    `json:title`
-	Description string    `json:description`
-	DueDate     time.Time `json:due_date`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	DueDate     string `json:"due_date"`
 }
 
 type Task struct {
-	Title       string    `json:title`
-	Description string    `json:description`
-	DueDate     time.Time `json:due_date`
-	CreatedAt   time.Time `json:created_at`
-	UpdatedAt   time.Time `json:updated_at`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	DueDate     time.Time `json:"due_date"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 type TaskID struct {
-	ID int `json:id`
+	ID int `json:"id"`
 	Task
 }
 

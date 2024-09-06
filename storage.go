@@ -10,11 +10,11 @@ import (
 )
 
 type Storage interface {
-	CreateTask(*Task) (Task, error)
+	CreateTask(*Task) (*TaskID, error)
 	GetTasks() ([]TaskID, error)
-	GetTaskByID(int) (TaskID, error)
-	UpdateTask(int, TaskCreateReq) (*TaskID, error)
-	DeleteTask(int) error
+	GetTaskByID(int) (*TaskID, error)
+	UpdateTask(int, TaskCreateReq) (*TaskID, error, int)
+	DeleteTask(int) (error, int)
 }
 type PostgresStore struct {
 	db *sql.DB
@@ -52,19 +52,19 @@ func NewPostgresStore() (*PostgresStore, error) {
 	return &PostgresStore{db: db}, nil
 }
 
-func (s *PostgresStore) CreateTask(t *Task) (Task, error) {
-
-	queryStr := `insert into task (title, description, due_date, created_at, updated_at) values ($1,$2,$3,$4,$5) `
-	rows, err := s.db.Query(queryStr, t.Title, t.Description, t.DueDate, t.ApplyCurrentTimeToTask("CreatedAt"), t.ApplyCurrentTimeToTask("UpdatedAt"))
+func (s *PostgresStore) CreateTask(t *Task) (*TaskID, error) {
+	tr := &TaskID{}
+	queryStr := `insert into task (title, description, due_date, created_at, updated_at) values ($1,$2,$3,$4,$5) returning id `
+	err := s.db.QueryRow(queryStr, t.Title, t.Description, t.DueDate, t.CreatedAt, t.UpdatedAt).Scan(&tr.ID)
 	if err != nil {
-		return Task{}, err
+		return nil, err
 	}
-	task := new(Task)
-	if err := ScanIntoStruct(rows, &task); err != nil {
-		return Task{}, err
-	}
+	// task := new(Task)
+	// if err := ScanIntoStruct(rows, &task); err != nil {
+	// 	return nil, err
+	// }
 
-	return *task, nil
+	return tr, nil
 }
 
 func (s *PostgresStore) GetTasks() ([]TaskID, error) {
@@ -87,7 +87,7 @@ func (s *PostgresStore) GetTasks() ([]TaskID, error) {
 }
 
 // todo handle the cases of failure
-func (s *PostgresStore) GetTaskByID(id int) (TaskID, error) {
+func (s *PostgresStore) GetTaskByID(id int) (*TaskID, error) {
 
 	var taskRet TaskID
 	query := fmt.Sprintf("select * from task where id = %v", id)
@@ -95,48 +95,69 @@ func (s *PostgresStore) GetTaskByID(id int) (TaskID, error) {
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return TaskID{}, err
+			return nil, err
 		}
-		return TaskID{}, err
-	}
-	for rows.Next() {
-		task, err := scanIntoTask(rows)
-		if err != nil {
-			return TaskID{}, err
-		}
-		taskRet = *task
-	}
-	defer rows.Close()
-
-	return taskRet, nil
-}
-
-func (s *PostgresStore) UpdateTask(id int, task TaskCreateReq) (*TaskID, error) {
-	query := `update task
-	set title = $1, description = $2, due_date = $3, updated_at = NOW()
-	where id = $4`
-	rows, err := s.db.Query(query, task.Title, task.Description, task.DueDate, id)
-	if err != nil {
 		return nil, err
 	}
-	var taskRet TaskID
 	for rows.Next() {
 		task, err := scanIntoTask(rows)
 		if err != nil {
 			return nil, err
 		}
+
 		taskRet = *task
 	}
+	if taskRet.IsTaskIDEmpty() {
+		return nil, nil
+	}
+	defer rows.Close()
+
 	return &taskRet, nil
 }
 
-func (s *PostgresStore) DeleteTask(id int) error {
-	query := `delete from task where id = $1`
-	_, err := s.db.Exec(query, id)
+func (s *PostgresStore) UpdateTask(id int, task TaskCreateReq) (*TaskID, error, int) {
+	query := `UPDATE task
+	SET title = $1, description = $2, due_date = $3, updated_at = NOW()
+	WHERE id = $4`
+
+	result, err := s.db.Exec(query, task.Title, task.Description, task.DueDate, id)
 	if err != nil {
-		return err
+
+		return nil, err, -1
 	}
-	return nil
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err, -1
+	}
+
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("no task with id"), 0
+	}
+
+	updatedTask, err := s.GetTaskByID(id)
+	if err != nil {
+
+		return nil, err, -1
+	}
+
+	return updatedTask, nil, int(rowsAffected)
+}
+
+func (s *PostgresStore) DeleteTask(id int) (error, int) {
+	query := `delete from task where id = $1`
+	result, err := s.db.Exec(query, id)
+	if err != nil {
+		return err, -1
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err, -1
+	}
+	if rowsAffected == 0 {
+		return nil, 0
+	}
+	return nil, 1
 }
 
 func scanIntoTask(rows *sql.Rows) (*TaskID, error) {
@@ -189,4 +210,8 @@ func ScanIntoStruct(r *sql.Rows, dest interface{}) error {
 	}
 
 	return r.Err()
+}
+
+func (t *TaskID) IsTaskIDEmpty() bool {
+	return (t.Title == "" && t.Description == "" && t.DueDate.IsZero() && t.CreatedAt.IsZero() && t.UpdatedAt.IsZero()) || t.ID == 0
 }

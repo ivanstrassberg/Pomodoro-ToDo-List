@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -41,32 +40,44 @@ func (s *APIServer) handleHome(w http.ResponseWriter, r *http.Request) error {
 
 func (s *APIServer) handlePostTasks(w http.ResponseWriter, r *http.Request) error {
 	createTaskRequest := new(TaskCreateReq)
-	if err := json.NewDecoder(r.Body).Decode(createTaskRequest); err != nil {
-		return WriteJSON(w, http.StatusBadRequest, "")
+	jsonDecoder := json.NewDecoder(r.Body)
+	// jsonDecoder.DisallowUnknownFields()
+	if err := jsonDecoder.Decode(createTaskRequest); err != nil {
+		return WriteJSON(w, http.StatusBadRequest, "wrong data format")
 	}
 	// if flag := isValidRFC3339(createTaskRequest.DueDate); !flag {
 	// 	return WriteJSON(w, http.StatusBadRequest, "Bad time format")
 	// }
+	parsed, err := time.Parse(time.RFC3339, createTaskRequest.DueDate)
 	createdTask := &Task{
 		Title:       createTaskRequest.Title,
 		Description: createTaskRequest.Description,
-		DueDate:     createTaskRequest.DueDate,
+		DueDate:     parsed,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
 
-	_, err := s.store.CreateTask(createdTask)
+	retTaskID, err := s.store.CreateTask(createdTask)
 	if err != nil {
-		return WriteJSON(w, http.StatusInternalServerError, err)
+		return WriteJSON(w, http.StatusInternalServerError, "server issue")
 	}
 
-	WriteJSON(w, http.StatusOK, createdTask)
+	WriteJSON(w, http.StatusOK, TaskID{
+		ID: retTaskID.ID,
+		Task: Task{
+			Title:       createdTask.Title,
+			Description: createTaskRequest.Description,
+			DueDate:     parsed,
+			CreatedAt:   createdTask.CreatedAt,
+			UpdatedAt:   createdTask.UpdatedAt,
+		},
+	})
 	return nil
 }
 func (s *APIServer) handleGetTasks(w http.ResponseWriter, r *http.Request) error {
 	tasksSlice, err := s.store.GetTasks()
 	if err != nil {
-		WriteJSON(w, http.StatusInternalServerError, "")
+		WriteJSON(w, http.StatusInternalServerError, "server issue")
 		return err
 	}
 	WriteJSON(w, http.StatusOK, tasksSlice)
@@ -76,55 +87,68 @@ func (s *APIServer) handleGetTasks(w http.ResponseWriter, r *http.Request) error
 func (s *APIServer) handleGetTaskByID(w http.ResponseWriter, r *http.Request) error {
 	idInt, err := getIDFromURL(r)
 	if err != nil {
-		return err
+		return WriteJSON(w, http.StatusBadRequest, "invalid ID format")
 	}
 	taskByID, err := s.store.GetTaskByID(idInt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			WriteJSON(w, http.StatusNotFound, "Task not found")
-			return err
-		}
-		WriteJSON(w, http.StatusInternalServerError, "Server error")
+		WriteJSON(w, http.StatusInternalServerError, "Server issue")
 		return err
 	}
-	WriteJSON(w, http.StatusOK, taskByID)
-	return nil
+	if taskByID == nil {
+		return WriteJSON(w, http.StatusNotFound, "Task not found")
+	}
+	return WriteJSON(w, http.StatusOK, taskByID)
 }
 func (s *APIServer) handleUpdateTaskByID(w http.ResponseWriter, r *http.Request) error {
 
 	idInt, err := getIDFromURL(r)
+	if err != nil {
+		return WriteJSON(w, http.StatusBadRequest, "invalid ID format")
+	}
 	createTaskRequest := new(TaskCreateReq)
 	if err := json.NewDecoder(r.Body).Decode(createTaskRequest); err != nil {
-		return WriteJSON(w, http.StatusBadRequest, "")
+		return WriteJSON(w, http.StatusBadRequest, "wrong data format")
 	}
 	if err != nil {
 		return err
 	}
-	updatedTask, err := s.store.UpdateTask(idInt, *createTaskRequest)
-	if err != nil {
-		return err
+	updatedTask, err, rowsAffected := s.store.UpdateTask(idInt, *createTaskRequest)
+	if updatedTask == nil && rowsAffected >= 0 {
+		return WriteJSON(w, http.StatusNotFound, "task not found")
 	}
-	//something wrong with writejson, just sends empty structs EVERYWHERE!
-	//400 404 500 handle
+	if err != nil {
+		fmt.Println(err)
+		return WriteJSON(w, http.StatusInternalServerError, "server issue")
+	}
+
 	WriteJSON(w, http.StatusOK, updatedTask)
 	return nil
 }
 func (s *APIServer) handleDeleteTaskByID(w http.ResponseWriter, r *http.Request) error {
 	idInt, err := getIDFromURL(r)
 	if err != nil {
-		return err
+		return WriteJSON(w, http.StatusBadRequest, "invalid ID format")
 	}
-	if err := s.store.DeleteTask(idInt); err != nil {
-		return err
+	err, rowsAffected := s.store.DeleteTask(idInt)
+
+	if err != nil {
+		return WriteJSON(w, http.StatusInternalServerError, "server issue")
+	}
+	if rowsAffected == 0 {
+		return WriteJSON(w, http.StatusNotFound, "task not found")
+	}
+	if rowsAffected == -1 {
+		return WriteJSON(w, http.StatusInternalServerError, "server issue")
 	}
 
-	WriteJSON(w, http.StatusNoContent, "Task deleted")
-	// refer to codes
+	w.WriteHeader(http.StatusNoContent)
 	return nil
+
 }
 
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(v)
 }
 
