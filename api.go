@@ -41,14 +41,16 @@ func (s *APIServer) handleHome(w http.ResponseWriter, r *http.Request) error {
 func (s *APIServer) handlePostTasks(w http.ResponseWriter, r *http.Request) error {
 	createTaskRequest := new(TaskCreateReq)
 	jsonDecoder := json.NewDecoder(r.Body)
-	// jsonDecoder.DisallowUnknownFields()
+	jsonDecoder.DisallowUnknownFields()
+
 	if err := jsonDecoder.Decode(createTaskRequest); err != nil {
 		return WriteJSON(w, http.StatusBadRequest, "wrong data format")
 	}
-	// if flag := isValidRFC3339(createTaskRequest.DueDate); !flag {
-	// 	return WriteJSON(w, http.StatusBadRequest, "Bad time format")
-	// }
+
 	parsed, err := time.Parse(time.RFC3339, createTaskRequest.DueDate)
+	if err != nil {
+		return WriteJSON(w, http.StatusBadRequest, "wrong data format")
+	}
 	createdTask := &Task{
 		Title:       createTaskRequest.Title,
 		Description: createTaskRequest.Description,

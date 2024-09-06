@@ -86,7 +86,6 @@ func (s *PostgresStore) GetTasks() ([]TaskID, error) {
 	return taskSlice, nil
 }
 
-// todo handle the cases of failure
 func (s *PostgresStore) GetTaskByID(id int) (*TaskID, error) {
 
 	var taskRet TaskID
